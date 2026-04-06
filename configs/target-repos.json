@@ -1,0 +1,14 @@
+{
+  "repos": [
+    {
+      "owner": "JeanneLee57",
+      "repo": "example-repo",
+      "testCommand": "npm test",
+      "installCommand": "npm install",
+      "language": "typescript"
+    }
+  ],
+  "triggerLabel": "auto-impl",
+  "wipLabel": "wip",
+  "doneLabel": "auto-impl-done"
+}

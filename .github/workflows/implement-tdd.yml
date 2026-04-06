@@ -1,0 +1,137 @@
+name: Implement Issue via TDD
+
+on:
+  repository_dispatch:
+    types: [implement-issue]
+  workflow_dispatch:
+    inputs:
+      owner:
+        description: "Target repo owner"
+        required: true
+      repo:
+        description: "Target repo name"
+        required: true
+      issueNumber:
+        description: "Issue number"
+        required: true
+      title:
+        description: "Issue title"
+        required: true
+      body:
+        description: "Issue body"
+        required: false
+        default: ""
+      testCommand:
+        description: "Test command"
+        required: false
+        default: "npm test"
+      installCommand:
+        description: "Install command"
+        required: false
+        default: "npm install"
+      language:
+        description: "Language (typescript/javascript/python)"
+        required: false
+        default: "typescript"
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout orchestrator
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install orchestrator dependencies
+        run: npm ci
+
+      - name: Set issue variables
+        id: vars
+        run: |
+          # Support both repository_dispatch and workflow_dispatch
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "owner=${{ github.event.client_payload.owner }}" >> $GITHUB_OUTPUT
+            echo "repo=${{ github.event.client_payload.repo }}" >> $GITHUB_OUTPUT
+            echo "issue_number=${{ github.event.client_payload.issueNumber }}" >> $GITHUB_OUTPUT
+            echo "title=${{ github.event.client_payload.title }}" >> $GITHUB_OUTPUT
+            echo "test_command=${{ github.event.client_payload.testCommand }}" >> $GITHUB_OUTPUT
+            echo "install_command=${{ github.event.client_payload.installCommand }}" >> $GITHUB_OUTPUT
+            echo "language=${{ github.event.client_payload.language }}" >> $GITHUB_OUTPUT
+          else
+            echo "owner=${{ github.event.inputs.owner }}" >> $GITHUB_OUTPUT
+            echo "repo=${{ github.event.inputs.repo }}" >> $GITHUB_OUTPUT
+            echo "issue_number=${{ github.event.inputs.issueNumber }}" >> $GITHUB_OUTPUT
+            echo "title=${{ github.event.inputs.title }}" >> $GITHUB_OUTPUT
+            echo "test_command=${{ github.event.inputs.testCommand }}" >> $GITHUB_OUTPUT
+            echo "install_command=${{ github.event.inputs.installCommand }}" >> $GITHUB_OUTPUT
+            echo "language=${{ github.event.inputs.language }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Configure git
+        run: |
+          git config --global user.email "orchestrator-bot@github-actions"
+          git config --global user.name "Orchestrator Bot"
+
+      - name: Run TDD implementation
+        id: tdd
+        env:
+          CROSS_REPO_PAT: ${{ secrets.CROSS_REPO_PAT }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ISSUE_OWNER: ${{ steps.vars.outputs.owner }}
+          ISSUE_REPO: ${{ steps.vars.outputs.repo }}
+          ISSUE_NUMBER: ${{ steps.vars.outputs.issue_number }}
+          ISSUE_TITLE: ${{ steps.vars.outputs.title }}
+          # Pass body via env to avoid shell injection
+          ISSUE_BODY: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.body || github.event.inputs.body }}
+          TEST_COMMAND: ${{ steps.vars.outputs.test_command }}
+          INSTALL_COMMAND: ${{ steps.vars.outputs.install_command }}
+          LANGUAGE: ${{ steps.vars.outputs.language }}
+        run: npm run run-tdd
+
+      - name: Create PR in target repo
+        id: pr
+        env:
+          CROSS_REPO_PAT: ${{ secrets.CROSS_REPO_PAT }}
+          ISSUE_OWNER: ${{ steps.vars.outputs.owner }}
+          ISSUE_REPO: ${{ steps.vars.outputs.repo }}
+          ISSUE_NUMBER: ${{ steps.vars.outputs.issue_number }}
+          BRANCH_NAME: ${{ steps.tdd.outputs.branch }}
+          TESTS_PASSED: ${{ steps.tdd.outputs.tests_passed }}
+          ORCHESTRATOR_REPO: ${{ github.repository }}
+        run: npm run create-pr
+
+      - name: Summary
+        run: |
+          echo "## Implementation Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repo**: ${{ steps.vars.outputs.owner }}/${{ steps.vars.outputs.repo }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Issue**: #${{ steps.vars.outputs.issue_number }} - ${{ steps.vars.outputs.title }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests Passed**: ${{ steps.tdd.outputs.tests_passed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **PR**: ${{ steps.pr.outputs.pr_url }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Handle failure - remove wip label
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.CROSS_REPO_PAT }}
+          script: |
+            const owner = '${{ steps.vars.outputs.owner }}';
+            const repo = '${{ steps.vars.outputs.repo }}';
+            const issue_number = parseInt('${{ steps.vars.outputs.issue_number }}');
+
+            // Remove wip label so it can be retried
+            await github.rest.issues.removeLabel({
+              owner, repo, issue_number, name: 'wip',
+            }).catch(() => {});
+
+            // Add failure comment
+            await github.rest.issues.createComment({
+              owner, repo, issue_number,
+              body: '🤖 **Auto-implementation failed**\n\nThe orchestrator encountered an error. The `wip` label has been removed so this can be retried.\n\nCheck the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.',
+            });

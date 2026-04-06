@@ -1,0 +1,66 @@
+name: Poll Issues
+
+on:
+  schedule:
+    # Every 30 minutes
+    - cron: "*/30 * * * *"
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    outputs:
+      issues: ${{ steps.fetch.outputs.issues }}
+      has_issues: ${{ steps.check.outputs.has_issues }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch issues with trigger label
+        id: fetch
+        env:
+          CROSS_REPO_PAT: ${{ secrets.CROSS_REPO_PAT }}
+        run: npm run fetch-issues
+
+      - name: Check if there are issues to process
+        id: check
+        run: |
+          ISSUES='${{ steps.fetch.outputs.issues }}'
+          if [ "$ISSUES" = "[]" ] || [ -z "$ISSUES" ]; then
+            echo "has_issues=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_issues=true" >> $GITHUB_OUTPUT
+          fi
+
+  trigger-implementation:
+    needs: poll
+    if: needs.poll.outputs.has_issues == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      # Process one issue at a time to avoid conflicts
+      max-parallel: 1
+      matrix:
+        issue: ${{ fromJson(needs.poll.outputs.issues) }}
+
+    steps:
+      - name: Trigger implementation workflow
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.CROSS_REPO_PAT }}
+          script: |
+            const issue = ${{ toJson(matrix.issue) }};
+            await github.rest.repos.createDispatchEvent({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              event_type: 'implement-issue',
+              client_payload: issue,
+            });
+            console.log(`Triggered implementation for ${issue.owner}/${issue.repo}#${issue.issueNumber}`);
