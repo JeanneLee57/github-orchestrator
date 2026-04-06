@@ -92,6 +92,7 @@ jobs:
           TEST_COMMAND: ${{ steps.vars.outputs.test_command }}
           INSTALL_COMMAND: ${{ steps.vars.outputs.install_command }}
           LANGUAGE: ${{ steps.vars.outputs.language }}
+          AI_BUDGET_LIMIT_USD: ${{ vars.AI_BUDGET_LIMIT_USD || '5.00' }}
         run: npm run run-tdd
 
       - name: Create PR in target repo
