@@ -103,6 +103,8 @@ jobs:
           ISSUE_NUMBER: ${{ steps.vars.outputs.issue_number }}
           BRANCH_NAME: ${{ steps.tdd.outputs.branch }}
           TESTS_PASSED: ${{ steps.tdd.outputs.tests_passed }}
+          REVIEW_APPROVED: ${{ steps.tdd.outputs.review_approved }}
+          TOTAL_COST: ${{ steps.tdd.outputs.total_cost }}
           ORCHESTRATOR_REPO: ${{ github.repository }}
         run: npm run create-pr
 
@@ -113,6 +115,8 @@ jobs:
           echo "- **Repo**: ${{ steps.vars.outputs.owner }}/${{ steps.vars.outputs.repo }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Issue**: #${{ steps.vars.outputs.issue_number }} - ${{ steps.vars.outputs.title }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Tests Passed**: ${{ steps.tdd.outputs.tests_passed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Review Approved**: ${{ steps.tdd.outputs.review_approved }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Cost**: \$${{ steps.tdd.outputs.total_cost }}" >> $GITHUB_STEP_SUMMARY
           echo "- **PR**: ${{ steps.pr.outputs.pr_url }}" >> $GITHUB_STEP_SUMMARY
 
       - name: Handle failure - remove wip label
