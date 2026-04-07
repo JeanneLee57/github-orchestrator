@@ -2,7 +2,7 @@
   "repos": [
     {
       "owner": "JeanneLee57",
-      "repo": "example-repo",
+      "repo": "jeanne-log",
       "testCommand": "npm test",
       "installCommand": "npm install",
       "language": "typescript"
