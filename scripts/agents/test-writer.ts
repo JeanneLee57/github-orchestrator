@@ -87,7 +87,7 @@ export async function runTestWriter(
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 8192,
-    thinking: { type: "adaptive" },
+    // thinking: { type: "adaptive" }, // Temporarily disabled for debugging
     system: buildSystem(input.language),
     messages: [
       {
@@ -102,7 +102,10 @@ export async function runTestWriter(
   const outputTokens = response.usage.output_tokens;
 
   const textBlock = response.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") throw new Error("Test writer returned no text");
+  if (!textBlock || textBlock.type !== "text") {
+    console.error("Response content:", JSON.stringify(response.content, null, 2));
+    throw new Error("Test writer returned no text");
+  }
 
   const files = extractFileBlocks(textBlock.text, input.language);
   if (files.length === 0) throw new Error("Test writer produced no test files");
